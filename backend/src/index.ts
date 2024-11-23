@@ -2,36 +2,41 @@ import { WebSocket, WebSocketServer } from 'ws';
 
 const wss = new WebSocketServer({ port: 8080 });
 
-let sender: WebSocket | null = null;
-let receiver: WebSocket | null = null;
+let senderSocket: null | WebSocket = null;
+let receiverSocket: null | WebSocket = null;
 
-
-// there will be only one connection so dont override these global variables
 wss.on('connection', function connection(ws) {
     ws.on('error', console.error);
 
-    ws.on('message', function message(data) {
-        try {
-            const stringData = data.toString()
-            const jsonData = JSON.parse(stringData)
-            if (jsonData.type == "sender") {
-                sender = ws
-            } else if (jsonData.type == "receiver") {
-                receiver = ws
-            } else if (jsonData.type == "createOffer") {
-                receiver?.send(JSON.stringify({ type: "createOffer", sdp: jsonData.sdp }))
-            } else if (jsonData.type == "createAnswer") {
-                sender?.send(JSON.stringify({ type: "createAnswer", sdp: jsonData.sdp }))
-            } else if (jsonData.type == "iceCandidate") {
-                if (ws == sender) {
-                    receiver?.send(JSON.stringify({ type: "iceCandidate", candidate: jsonData.candidate }))
-                } else if (ws == receiver) {
-                    sender?.send(JSON.stringify({ type: "iceCandidate", candidate: jsonData.candidate }))
-                }
+    ws.on('message', function message(data: any) {
+        const message = JSON.parse(data);
+        if (message.type === 'sender') {
+            console.log("sender added");
+            senderSocket = ws;
+        } else if (message.type === 'receiver') {
+            console.log("receiver added");
+            receiverSocket = ws;
+        } else if (message.type === 'createOffer') {
+            if (ws !== senderSocket) {
+                return;
             }
-        } catch (err) {
-            console.log(err)
+            console.log("sending offer");
+            receiverSocket?.send(JSON.stringify({ type: 'createOffer', sdp: message.sdp }));
+        } else if (message.type === 'createAnswer') {
+            if (ws !== receiverSocket) {
+                return;
+            }
+            console.log("sending answer");
+            senderSocket?.send(JSON.stringify({ type: 'createAnswer', sdp: message.sdp }));
+        } else if (message.type === 'iceCandidate') {
+            console.log("sending ice candidate")
+            if (ws === senderSocket) {
+                receiverSocket?.send(JSON.stringify({ type: 'iceCandidate', candidate: message.candidate }));
+            } else if (ws === receiverSocket) {
+                senderSocket?.send(JSON.stringify({ type: 'iceCandidate', candidate: message.candidate }));
+            }
         }
     });
+
 });
 
